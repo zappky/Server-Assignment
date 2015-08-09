@@ -4,9 +4,9 @@ class LevelInfo: #to describe a level information for the player data
 
     def __init__(self):
         #print "Levelinfo class inited"
-        self.pigs_killed = -1
-        self.highest_score = -1
-        self.total_attempts  = -1
+        self.pigs_killed = 0
+        self.highest_score = 0
+        self.total_attempts  = 0
         
     def Populate(self,pigs_killed,highest_score,total_attempts): #set all field 
         self.pigs_killed = pigs_killed
@@ -32,22 +32,26 @@ class LevelInfo: #to describe a level information for the player data
         return self.total_attempts
     def SetTotalAttempts(self,value):
         self.total_attempts = value
+    def IncrementTotalAttempts(self,value):
+        self.total_attempts += value
 
 class Player(User): #to describe a player
     def __init__(self):
         #super(Player,self).__init__()# old style class cannot use super
         User.__init__(self)#therefore gonna do it explictly
-        self.level_info_list  = []
+        self.level_info_list  = [LevelInfo()] #init with the blank first level#the len of this list would be count of unlocked stages# index 0 would be level 1
         #print "Player class inited"
          
     def Populate(self,user_id,secret_key,level_info_list): #set all field
         User.Populate(self,user_id,secret_key)
-        self.level_info_list = level_info_list
+        
+        if level_info_list != None:
+            self.level_info_list = level_info_list
         
     def StringLevelInfoList(self):
         returnstring = ""
         for index, levelinfo in enumerate(self.level_info_list):
-            returnstring+= " Index:" + str(index)+":" + levelinfo.StringSelf()
+            returnstring+= "<br>\n Index:" + str(index)+" (level)"+ str(index+1)+" :" + levelinfo.StringSelf()
         return returnstring
             
     def StringSelf(self): #print out self information as string
@@ -56,12 +60,23 @@ class Player(User): #to describe a player
 
     def PopulateLevelRecord(self,index,pigs_killed,highest_score,total_attempts):
         self.level_info_list[index].Populate(pigs_killed,highest_score,total_attempts)
+
+    def PadEmptyLevelInfo(self,desire_size):
+        list_size = len(self.level_info_list)
+        if desire_size <= list_size:#escape if invalid request
+            return
+        pad_amount = desire_size - list_size
+        for i in range(pad_amount):
+            self.level_info_list.append(LevelInfo())
         
     def DeleteLevelInfo(self,index):
         del self.level_info_list[index]
     def AddLevelInfo(self,level_info):
         self.level_info_list.append(level_info)
         
+    def GetLevelUnlockedCount(self):
+        return len(self.level_info_list)
+    
     def GetLevelInfo(self,index):
         return self.level_info_list[index]
     def SetLevelInfo(self,level_info,index):
@@ -70,3 +85,21 @@ class Player(User): #to describe a player
         return self.level_info_list
     def SetLevelInfoList(self,level_record_list):
         self.level_info_list = level_record_list
+
+
+    def GetLevelPigsKilled(self,index):
+        return self.level_info_list[index].GetPigsKilled()
+    def SetLevelPigsKilled(self,index,value):
+        self.level_info_list[index].SetPigsKilled(value)
+        
+    def GetLevelHighestScore(self,index):
+        return self.level_info_list[index].GetHighestScore()
+    def SetLevelHighestScore(self,index,value):
+        self.level_info_list[index].SetHighestScore(value)
+        
+    def GetLevelTotalAttempts(self,index):
+        return self.level_info_list[index].GetTotalAttempts()
+    def SetLevelTotalAttempts(self,index,value):
+        self.level_info_list[index].SetTotalAttempts(value)
+    def IncrementLevelTotalAttempts(self,index,value):
+        self.level_info_list[index].IncrementTotalAttempts(value)
