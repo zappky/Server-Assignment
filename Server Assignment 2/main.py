@@ -22,6 +22,7 @@ from Player import * # import my player class
 #correct response code
 
 me = MasterAdmin()
+me.SetSecretKey("password")
 
 testplayer = Player()
 testplayer.SetUserId("playerid")
@@ -42,6 +43,16 @@ user_list = [me,testplayer,testaccountadmin,testgameadmin]# for testing only,wil
 
 MAX_PIG_COUNT = 5# max pig count per stage
 
+SERVER_MODE = True
+
+def SetServerMode(mode):
+    global SERVER_MODE
+    if mode != None:  
+        try:
+            SERVER_MODE = mode#serve as live code mode
+        except:
+            SERVER_MODE = SERVER_MODE #dont touch
+    
 def DecodeBasicAuth(self):
     authorization = str(self.request.headers.get('Authorization', None))
     
@@ -88,61 +99,46 @@ def BasicAuth(self,user_id,password):
     global currentuser
     currentuser = the_user
     if the_user == None: # if still cannot find user
-        self.abort(404,"User cannot be found")
+        self.abort(404,"User cannot be found, Hint: Check your username")
   
     if the_user.StringUserId() == user_id:
         
         user_key = the_user.GetSecretKey()
 
-        if isinstance(user_key,basestring):
-            if user_key == password:
-                #self.response.write("User Password is correct: " + "this is base STRING validation \n ")
+        if SERVER_MODE == True:
+            if isinstance(user_key,basestring):
+                testhashsample = hashlib.sha1(str(password))
+                digestedsample = testhashsample.hexdigest()
+                if user_key == digestedsample:
+                    return True
+                else:
+                    self.abort(400,"User Password is wrong: " + "this is base STRING validation of hashed password")
+
+                self.abort(400,"Unhandled abort, User Password cannot be validated" )    
+            else:
+                self.abort(400,"Unhandled password type, User Password cannot be validated" )    
+        else:
+            #Old method before migation of data to datastore,only work before migation
+            if isinstance(user_key,basestring):
+                if user_key == password:
+                    #self.response.write("User Password is correct: " + "this is base STRING validation \n ")
+                    return True
+                else:
+                    self.abort(400,"User Password is wrong: " + "this is base STRING validation")
+            try:       
+                testhashsample = hashlib.sha1(str(password))
+                digestedsample = testhashsample.hexdigest()
+            except TypeError:
+                self.abort(400,"Password type error,cannot be digested")
+            except:
+                self.abort(400,"Unknown error, password cannot be digested")
+                
+            if the_user.StringSecretKey() == digestedsample:
+                #self.response.write("User Password is correct: " + "this is HASH validation \n ")
                 return True
             else:
-                self.abort(400,"User Password is wrong: " + "this is base STRING validation")
-                
-        testhashsample = hashlib.sha1(str(password))
-        digestedsample = testhashsample.hexdigest()
-        
-        if the_user.StringSecretKey() == digestedsample:
-            #self.response.write("User Password is correct: " + "this is HASH validation \n ")
-            return True
-        else:
-            self.abort(400,"User Password is wrong: " + "this is HASH validation")
-    else:
-        self.abort(400,"User ID is wrong")
-        
-    return False
+                self.abort(400,"User Password is wrong: " + "this is HASH validation")
 
-def BasicAuthCheck(self,the_user = currentuser):#my old method
-    
-    userid , password = DecodeBasicAuth(self)
-    
-    the_user = FindUser(userid)#just find again regardlessly,this is if, the user suddenly change the crediental on postman
-    global currentuser
-    currentuser = the_user
-    if the_user == None: # if still cannot find user
-        self.abort(404,"User cannot be found")
-  
-    if the_user.StringUserId() == userid:
-        
-        user_key = the_user.GetSecretKey()
-
-        if isinstance(user_key,basestring):
-            if user_key == password:
-                #self.response.write("User Password is correct: " + "this is base STRING validation \n ")
-                return True
-            else:
-                self.abort(400,"User Password is wrong: " + "this is base STRING validation")
-                
-        testhashsample = hashlib.sha1(str(password))
-        digestedsample = testhashsample.hexdigest()
-        
-        if the_user.StringSecretKey() == digestedsample:
-            #self.response.write("User Password is correct: " + "this is HASH validation \n ")
-            return True
-        else:
-            self.abort(400,"User Password is wrong: " + "this is HASH validation")
     else:
         self.abort(400,"User ID is wrong")
         
@@ -180,23 +176,123 @@ def CreatePlayerAuto():# auto gen a player
     user_id = uuid.uuid4()
     secret_key = uuid.uuid4()
     hash_secret_key = hashlib.sha1(str(secret_key))
-    user.Populate(user_id,hash_secret_key,None)
+    if SERVER_MODE:
+        user.Populate(str(user_id),hash_secret_key.hexdigest(),None)#dunno how to store as hash and/or uuid data,so store them as string instead =X
+    else:
+        user.Populate(user_id,hash_secret_key,None)
     return user,secret_key
 
-def AddUser(the_user):# will change to using datastore instead
+def AddUserLocal(webapp2_handler,the_user):
     user_list.append(the_user)
+def AddUserServer(webapp2_handler,the_user):
+    try:
+        the_user.put()
+    except TypeError:
+        abort_flag = True
+        webapp2_handler.abort(400,"Bad user type,cannot put to datastore")
+    except:
+        abort_flag = True
+        webapp2_handler.abort(400,"Unknown error ,Bad user data,cannot put to datastore")
+def AddUser(webapp2_handler,the_user):
+    if SERVER_MODE:
+        return AddUserServer(webapp2_handler,the_user)
+    return AddUserLocal(webapp2_handler,the_user)
     
-def FindUser(userid):# will change to using datastore instead
+    
+def FindUserlocal(userid):
     for index in range(len(user_list)):
         if str(user_list[index].GetUserId()) == userid:
             return user_list[index]
-        
-def GetAllUser():# will change to use datastore instead
+    return None
+def FindUserServer(userid):
+    accountadminquery = AccountAdmin.query(AccountAdmin.user_id == userid).fetch(1)
+    gameadminquery = GameAdmin.query(GameAdmin.user_id == userid).fetch(1)
+    playerquery = Player.query(Player.user_id == userid).fetch(1)
+    masteradminquery = MasterAdmin.query(MasterAdmin.user_id == userid).fetch(1)
+
+    resultquery = masteradminquery + accountadminquery + gameadminquery + playerquery
+    if len(resultquery) > 0:#if got result
+        return resultquery[0]#return its entity
+    return None
+def FindUser(userid):
+    if SERVER_MODE:
+        return FindUserServer(userid)
+    return FindUserlocal(userid)
+    
+def GetAllUserLocal():
     return user_list
+def GetAllUserServer():#get all user,include admins
+    accountadminquery = AccountAdmin.query().fetch()
+    gameadminquery = GameAdmin.query().fetch()
+    playerquery = Player.query().fetch()
+    masteradminquery = MasterAdmin.query().fetch()
 
-def CountAllUser():# will change to use datastore instead
+    resultquery = masteradminquery + accountadminquery + gameadminquery + playerquery
+    
+    if len(resultquery) > 0:#if got result
+        return resultquery#return its entity
+    return None
+def GetAllUser():
+    if SERVER_MODE:
+        return GetAllUserServer()
+    return GetAllUserLocal()
+
+def GetAllPlayerLocal():
+    resultlist = []
+    for element in user_list:
+        if isinstance(element,Player):
+            resultlist.append(element)
+    return resultlist
+def GetAllPlayerServer():#get all user,include admins
+    resultquery = Player.query().fetch()
+    if len(resultquery) > 0:#if got result
+        return resultquery#return its entity
+    return None
+def GetAllPlayer():
+    if SERVER_MODE:
+        return GetAllPlayerServer()
+    return GetAllPlayerLocal()
+
+def GetAllAdminLocal():
+    resultlist = []
+    for element in user_list:
+        if isinstance(element,Admin):
+            resultlist.append(element)
+    return resultlist
+def GetAllAdminServer():#get all user,include admins
+    accountadminquery = AccountAdmin.query().fetch()
+    gameadminquery = GameAdmin.query().fetch()
+    masteradminquery = MasterAdmin.query().fetch()
+
+    resultquery = masteradminquery + accountadminquery + gameadminquery
+    
+    if len(resultquery) > 0:#if got result
+        return resultquery#return its entity
+    return None
+def GetAllAdmin():
+    if SERVER_MODE:
+        return GetAllAdminServer()
+    return GetAllAdminLocal()
+    
+def CountAllUserLocal():
     return len(user_list)
-
+def CountAllPlayerServer():
+    userlist = GetAllPlayerServer()
+    try:
+        return len(userlist)
+    except:
+        return 0
+def CountAllUserServer():
+    userlist = GetAllUserServer()
+    try:
+        return len(userlist)
+    except:
+        return 0
+def CountAllUser():
+    if SERVER_MODE:
+        return CountAllUserServer(the_user)
+    return CountAllUserLocal(the_user)
+    
 class GameLogicController():
     
     def UpdatePlayerProgress(self,webapp2_handler,the_user,level_number,score,pigs_killed):# for api 2
@@ -283,8 +379,7 @@ GLC = GameLogicController()
 #game admin account api starts
 class GetPlayerHighestLevel(webapp2.RequestHandler): # get a list of level and number of player with corresponding highest level reach, response in json ,no request
     def get(self):
-        BasicAuthCheck(self,currentuser)
-
+        BasicAuthWithRequest(self)
         #if not UserTypeCheck(GameAdmin,currentuser) and  not UserTypeCheck(MasterAdmin,currentuser):
         #    self.abort(403,'Rejected User API' +", Your user type: "+ StringUserType(currentuser))
         AllowedUserTypeList = [GameAdmin]
@@ -319,7 +414,7 @@ class GetPlayerHighestLevel(webapp2.RequestHandler): # get a list of level and n
     
 class GetAverageHighestScore(webapp2.RequestHandler): # get a list of level and average highest score, response in json ,no request
     def get(self):
-        BasicAuthCheck(self,currentuser)
+        BasicAuthWithRequest(self)
 
         #if not UserTypeCheck(GameAdmin,currentuser) and  not UserTypeCheck(MasterAdmin,currentuser):
         #    self.abort(403,'Rejected User API' +", Your user type: "+ StringUserType(currentuser))
@@ -331,12 +426,10 @@ class GetAverageHighestScore(webapp2.RequestHandler): # get a list of level and 
 
         jsonobjlist = []
 
-        debuglist = GetAllUser()
-        user_list = []
-        
-        for i in range(len(debuglist)):
-            if isinstance(debuglist[i],Player):
-                user_list.append(debuglist[i])
+        if SERVER_MODE:
+            user_list = GetAllPlayerServer()
+        else:
+            user_list = GetAllUserLocal()
                 
         totathighscore_list = [0]# index 0 represent level 1's high score and so on
         totaluserperlevel_list = [0]# parallel list with totathighscore_list# use to indicate amount of user per level
@@ -360,7 +453,7 @@ class GetAverageHighestScore(webapp2.RequestHandler): # get a list of level and 
     
 class GetLevelAttempts(webapp2.RequestHandler): # get a list of level and total attempt, response in json ,no request
     def get(self):
-        BasicAuthCheck(self,currentuser)
+        BasicAuthWithRequest(self)
 
         #if not UserTypeCheck(GameAdmin,currentuser) and  not UserTypeCheck(MasterAdmin,currentuser):
         #    self.abort(403,'Rejected User API' +", Your user type: "+ StringUserType(currentuser))
@@ -372,12 +465,12 @@ class GetLevelAttempts(webapp2.RequestHandler): # get a list of level and total 
 
         jsonobjlist = []
 
-        debuglist = GetAllUser()
         user_list = []
         
-        for i in range(len(debuglist)):
-            if isinstance(debuglist[i],Player):
-                user_list.append(debuglist[i])
+        if SERVER_MODE:
+            user_list = GetAllPlayerServer()
+        else:
+            user_list = GetAllUserLocal()
                 
         totatattempt_list = [0]# index 0 represent level 1's total attemp and so on
         
@@ -397,7 +490,7 @@ class GetLevelAttempts(webapp2.RequestHandler): # get a list of level and total 
 
 class GetTotalPlayersNumber(webapp2.RequestHandler): # get number of player, response in json ,no request
     def get(self):
-        BasicAuthCheck(self,currentuser)
+        BasicAuthWithRequest(self)
 
         #if not UserTypeCheck(GameAdmin,currentuser) and  not UserTypeCheck(MasterAdmin,currentuser):
         #    self.abort(403,'Rejected User API' +", Your user type: "+ StringUserType(currentuser))
@@ -406,7 +499,14 @@ class GetTotalPlayersNumber(webapp2.RequestHandler): # get number of player, res
             self.abort(403,'Rejected User API' +", Your user type: "+ StringUserType(currentuser) +" \n Allowed account type:" + StringMultiClassName(AllowedUserTypeList))
 
         self.response.headers['Content-Type'] = 'application/json'
-        totalplayercount = CountAllUser()
+        
+        totalplayercount = 0
+        
+        if SERVER_MODE:
+            totalplayercount = CountAllPlayerServer()
+        else:
+            totalplayercount = CountAllPlayerLocal()
+        
         jsonobj = {
             'total_players': str(totalplayercount)
         } 
@@ -486,9 +586,26 @@ class UpdateUserProgress(webapp2.RequestHandler): # update a user ,level,score,p
         level = self.request.get("level",None)
         score = self.request.get("score",None)
         pigs_killed = self.request.get("pigs_killed",None)
-
-        GLC.UpdatePlayerProgress(self,currentuser,level,score,pigs_killed)
         
+        #self.response.out.write("<br> Before player MODIFY: " + str( len( currentuser.GetLevelInfoList() ) ) )
+            
+        GLC.UpdatePlayerProgress(self,currentuser,level,score,pigs_killed)
+        #self.response.out.write("<br> After player MODIFY: " + str( len( currentuser.GetLevelInfoList() ) ) )
+        
+        if SERVER_MODE:
+            #if len(currentuser.GetLevelInfoList()) > 10:
+                #self.response.out.write("before: " + str( len( currentuser.GetLevelInfoList() ) ) )
+                #currentuser.SetLevelInfoList([LevelInfo()])
+                #self.response.out.write("After: " + str(len(currentuser.GetLevelInfoList())) )
+
+            #if len( currentuser.GetLevelInfoList() ) > 10:
+                #currentuser.SetLevelInfoList([LevelInfo()])
+                #self.response.out.write( "<br> HARD RESETTING BUG : " + str( len( currentuser.GetLevelInfoList() ) ))
+
+            #self.response.out.write("<br> Before PUT: " + str( len( currentuser.GetLevelInfoList() ) ) )
+            currentuser.put()#update to datastore
+            #self.response.out.write("<br> After PUT: " + str( len( currentuser.GetLevelInfoList() ) ) )                           
+
         self.response.headers['Content-Type'] = 'application/json'
         
         jsonobj = {
@@ -503,7 +620,7 @@ class UpdateUserProgress(webapp2.RequestHandler): # update a user ,level,score,p
 #account creator account api starts    
 class CreateUser(webapp2.RequestHandler): # create a user, response in json,no request body
     def post(self):
-        BasicAuthCheck(self,currentuser)
+        BasicAuthWithRequest(self)
 
         #if not UserTypeCheck(AccountAdmin,currentuser) and  not UserTypeCheck(MasterAdmin,currentuser):
             #self.abort(403,'Rejected User API' +", Your user type: "+ StringUserType(currentuser) + "Account Admin and Master Admin allowed")
@@ -513,7 +630,7 @@ class CreateUser(webapp2.RequestHandler): # create a user, response in json,no r
         
         self.response.headers['Content-Type'] = 'application/json'
         newuser,originalkey = CreatePlayerAuto()
-        AddUser(newuser)
+        AddUser(self,newuser)
         
         jsonobj = {
             'user_id': str(newuser.GetUserId()), 
@@ -522,22 +639,123 @@ class CreateUser(webapp2.RequestHandler): # create a user, response in json,no r
         self.response.out.write(json.dumps(jsonobj, sort_keys = False, indent = 4 , separators = (',', ': ')) )
         self.response.set_status(201)
 #account creator account api end
+class DebugAccountHandler(webapp2.RequestHandler):# create account,but not required by assignment
+    def post(self):
+        usertype = self.request.get("usertype")
+        username = self.request.get("username")
+        password = self.request.get("password")
         
+        newaccount = None
+        
+        errormsgflag = False
+        errormsg = "ERROR: "
+        if usertype == '' or  usertype == None:
+            errormsg += ": usertype is empty \n"
+            errormsgflag = True
+        
+        if username == '' or  username == None:
+            errormsg += ": username is empty \n"
+            errormsgflag = True
+        
+        if password == '' or password == None:
+            errormsg += " , password is empty \n"
+            errormsgflag = True
+                
+        if errormsgflag:
+            self.abort(400,errormsg)
+            
+        if usertype == "masteradmin":
+            newaccount = MasterAdmin()
+            newaccount.SetUserId(username)
+            newaccount.SetSecretKey(hashlib.sha1(str(password)).hexdigest())
+        elif usertype == "gameadmin":
+            newaccount = GameAdmin()
+            newaccount.SetUserId(username)
+            newaccount.SetSecretKey(hashlib.sha1(str(password)).hexdigest())
+        elif usertype == "accountadmin":
+            newaccount = AccountAdmin()
+            newaccount.SetUserId(username)
+            newaccount.SetSecretKey(hashlib.sha1(str(password)).hexdigest())
+        elif usertype == "player":
+            newaccount = Player()
+            newaccount.SetUserId(username)
+            newaccount.SetSecretKey(hashlib.sha1(str(password)).hexdigest())
+
+        if newaccount == None:
+            self.response.write("Nothing new is created")
+        else:
+            AddUser(self,newaccount)
+            self.response.write("<br> New Account Created: "+" <br> class name:"+ newaccount.__class__.__name__  + newaccount.StringSelf())  
+            self.response.set_status(201)
+            
+        self.response.set_status(200)
+    
 class DebugUserHandler(webapp2.RequestHandler):# print out the users
     def get(self):
         if currentuser != None:
             self.response.write("Current User: " + currentuser.StringSelf()+ "<br> Type: " + StringUserType(currentuser) + "<br>")
         else:
             self.response.write("Current User: " +" NONE "+"<br>")
-        responsestring = ""
-        for index in range(len(user_list)):
-            responsestring += "<br>" + " index:" + "<"+ str(index) +">"+ "<br> Type: " + StringUserType(user_list[index])+ user_list[index].StringSelf() +"<br>"
-            
-        self.response.write(responsestring)
+
+        user_list = []
         
+        usertype = self.request.get("usertype")
+        
+        if usertype == "admin":
+            user_list = GetAllAdmin()
+        elif usertype == "player":
+            user_list = GetAllPlayer()
+        else:  
+            user_list = GetAllUser()
+
+        if user_list != None:
+            responsestring = ""
+            for index in range(len(user_list)):
+                responsestring += "<br>" + " index:" + "<"+ str(index) +">"+ "<br> Type: " + StringUserType(user_list[index])+ user_list[index].StringSelf() +"<br>"
+            
+            self.response.write(responsestring)
+        else:
+            self.response.write("<br> User list is empty")
+            
+        self.response.set_status(200)
+class SpecialDebugHandler(webapp2.RequestHandler):
+    def post(self):
+        BasicAuthWithRequest(self)
+        self.response.out.write("<br> special debug Before anything,First check current user level list: " + str( len( currentuser.GetLevelInfoList() ) ) )
+
+        loops = self.request.get("loops")
+        if loops == '' or loops == None:
+            loops = 1
+        else:
+            loops = int(loops)
+        testlevelinfolist = []
+        for count in range(loops):
+            testlevelinfolist.append(LevelInfo())#pad empty levelinfo data
+            
+        currentuser.SetLevelInfoList(testlevelinfolist) 
+        self.response.out.write("<br> special debug After appending levelinfo,Second check current user level list: " + str( len( currentuser.GetLevelInfoList() ) ) )
+        currentuser.put()
+        self.response.out.write( currentuser.StringSelf() )#print out the details
+        self.response.out.write("<br> special debug After putting the object,third check current user level list: " + str( len( currentuser.GetLevelInfoList() ) ) )
+        
+    def get(self):
+        BasicAuthWithRequest(self)
+        self.response.out.write("<br> special debug First check current user level list: " + str( len( currentuser.GetLevelInfoList() ) ) )
+        self.response.out.write( currentuser.StringSelf() )
 class DebugHandler(webapp2.RequestHandler):# set debug parameters
     def get(self):
         self.response.write('Hello Debug!')
+        
+        servermode = self.request.get("servermode")
+        if servermode == "True" or servermode == "true":  
+            SetServerMode(True)
+        elif servermode == "False" or servermode == "false":
+            SetServerMode(False)
+        else:
+            SetServerMode(None)
+            
+        self.response.write("<br>  Current Server Mode: " + str(SERVER_MODE))
+        
         usertype = self.request.get("usertype")
         global currentuser
         if usertype == "masteradmin":
@@ -550,29 +768,34 @@ class DebugHandler(webapp2.RequestHandler):# set debug parameters
             currentuser = testplayer
         else:
             currentuser = None
-        objectcheck = me
-        if isinstance(objectcheck,User):
-            self.response.write('<br>  objectcheck is instance of User')
-        if isinstance(objectcheck,Player):
-            self.response.write('<br>  objectcheck is instance of player')
-        if isinstance(objectcheck,Admin):
-            self.response.write('<br>  objectcheck is instance of Admin')
-        if isinstance(objectcheck,GameAdmin):
-            self.response.write('<br>  objectcheck is instance of GameAdmin')
-        if isinstance(objectcheck,AccountAdmin):
-            self.response.write('<br>  objectcheck is instance of AccountAdmin')
-        if isinstance(objectcheck,MasterAdmin):
-            self.response.write('<br>  objectcheck is instance of MasterAdmin')
-        
         self.response.write('<br> currentuser type is: ' + currentuser.__class__.__name__)
+
+        objectcheck = currentuser
+        if isinstance(objectcheck,User):
+            self.response.write('<br>  currentuser is instance of User')
+        if isinstance(objectcheck,Player):
+            self.response.write('<br>  currentuser is instance of player')
+        if isinstance(objectcheck,Admin):
+            self.response.write('<br>  currentuser is instance of Admin')
+        if isinstance(objectcheck,GameAdmin):
+            self.response.write('<br>  currentuser is instance of GameAdmin')
+        if isinstance(objectcheck,AccountAdmin):
+            self.response.write('<br>  currentuser is instance of AccountAdmin')
+        if isinstance(objectcheck,MasterAdmin):
+            self.response.write('<br>  currentuser is instance of MasterAdmin')
+        
+        self.response.set_status(200)
         
 class MainHandler(webapp2.RequestHandler):
     def get(self):
         self.response.write('Hello world!')
+        self.response.set_status(200)
 
 app = webapp2.WSGIApplication([
     ('/', MainHandler),
+     webapp2.Route('/special', handler = SpecialDebugHandler,name = 'SpecialDebugHandler'),
     webapp2.Route('/debug', handler = DebugHandler,name = 'DebugHandler'),
+    webapp2.Route('/debug/create', handler = DebugAccountHandler,name = 'DebugAccountHandler'),
     webapp2.Route('/debug/users', handler = DebugUserHandler,name = 'DebugUserHandler'),
     webapp2.Route('/user/create', handler = CreateUser,name = 'CreateUser'),
     webapp2.Route('/user/create/', handler = CreateUser,name = 'CreateUser'),

@@ -1,18 +1,39 @@
-from User import User
+from User import *
 
-class LevelInfo: #to describe a level information for the player data
+class LevelInfo(ndb.Model): #to describe a level information for the player data
 
-    def __init__(self):
-        #print "Levelinfo class inited"
+    classname = ndb.StringProperty()
+    pigs_killed = ndb.IntegerProperty()
+    highest_score = ndb.IntegerProperty()
+    total_attempts = ndb.IntegerProperty()
+    
+    def __init__(self,ndb_id = None,ndb_parent = None):
+        
+        if ndb_id != None and ndb_parent != None:
+            ndb.Model.__init__(self,id = ndb_id,parent = ndb_parent)
+        else:
+            if ndb_id == None:
+                ndb.Model.__init__(self)
+            else:
+                ndb.Model.__init__(self,id = ndb_id)
+            if ndb_parent == None:
+                ndb.Model.__init__(self)
+            else:
+                ndb.Model.__init__(self,parent = ndb_parent)
+            
         self.pigs_killed = 0
         self.highest_score = 0
         self.total_attempts  = 0
+        self.classname = self.__class__.__name__ 
         
     def Populate(self,pigs_killed,highest_score,total_attempts): #set all field 
         self.pigs_killed = pigs_killed
         self.highest_score = highest_score
         self.total_attempts = total_attempts
         
+    def GetClassName(self):
+        return self.__class__.__name__
+    
     def StringSelf(self): #print out self information as string
         return " <br> pigs_killed: "+ str(self.pigs_killed) + \
                 " <br> highest_score: " + str(self.highest_score) + \
@@ -36,9 +57,12 @@ class LevelInfo: #to describe a level information for the player data
         self.total_attempts += value
 
 class Player(User): #to describe a player
-    def __init__(self):
+    
+    level_info_list = ndb.StructuredProperty(LevelInfo,repeated=True)
+    
+    def __init__(self,ndb_id = None,ndb_parent = None):
         #super(Player,self).__init__()# old style class cannot use super
-        User.__init__(self)#therefore gonna do it explictly
+        User.__init__(self,ndb_id,ndb_parent)#therefore gonna do it explictly
         self.level_info_list  = [LevelInfo()] #init with the blank first level#the len of this list would be count of unlocked stages# index 0 would be level 1
         #print "Player class inited"
          
