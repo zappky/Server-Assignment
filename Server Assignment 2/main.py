@@ -638,6 +638,73 @@ class CreateUser(webapp2.RequestHandler): # create a user, response in json,no r
         self.response.out.write(json.dumps(jsonobj, sort_keys = False, indent = 4 , separators = (',', ': ')) )
         self.response.set_status(201)
 #account creator account api end
+class DebugDeleteAccountHandler(webapp2.RequestHandler): #delete specfic user
+    def post(self):
+        user_id = self.request.get("userid")
+        the_user = FindUser(user_id)
+        if the_user == None:
+            self.abort(404,"Requested user cannot be found")
+            
+        if SERVER_MODE:
+            the_user.key.delete()
+        else:
+            del the_user
+            
+        self.response.set_status(200)
+        
+class DebugFlushAccountHandler(webapp2.RequestHandler):#delete all requested type of account
+    def post(self):
+        
+        usertype = self.request.get("usertype")
+        
+        errormsgflag = False
+        errormsg = "ERROR: "
+        if usertype == '' or  usertype == None:
+            errormsg += ": usertype is empty \n"
+            errormsgflag = True
+            
+        if errormsgflag:
+            self.abort(400,errormsg)
+
+        flushlist = []
+        
+        if usertype == "admin":
+            flushlist = GetAllAdmin()
+            
+            if flushlist == None or len(flushlist) == 0:
+                self.abort(404,"No Admin to delete")
+                
+            if SERVER_MODE:
+                for element in flushlist:
+                    element.key.delete()
+            else:
+                for element in flushlist:
+                    del element
+        elif usertype == "player":
+            flushlist = GetAllPlayer()
+            
+            if flushlist == None or len(flushlist) == 0:
+                self.abort(404,"No Player to delete")
+                
+            if SERVER_MODE:
+                for element in flushlist:
+                    element.key.delete()
+            else:
+                for element in flushlist:
+                    del element
+        elif usertype == "user":
+            flushlist = GetAllUser()
+            if flushlist == None or len(flushlist) == 0:
+                self.abort(404,"No User to delete")
+            if SERVER_MODE:
+                for element in flushlist:
+                    element.key.delete()
+            else:
+                for element in flushlist:
+                    del element            
+
+        self.response.set_status(200)
+            
 class DebugAccountHandler(webapp2.RequestHandler):# create account,but not required by assignment
     def post(self):
         usertype = self.request.get("usertype")
@@ -795,6 +862,8 @@ app = webapp2.WSGIApplication([
     webapp2.Route('/special', handler = SpecialDebugHandler,name = 'SpecialDebugHandler'),
     webapp2.Route('/debug', handler = DebugHandler,name = 'DebugHandler'),
     webapp2.Route('/debug/create', handler = DebugAccountHandler,name = 'DebugAccountHandler'),
+    webapp2.Route('/debug/flush', handler = DebugFlushAccountHandler,name = 'DebugFlushAccountHandler'),
+    webapp2.Route('/debug/delete', handler = DebugDeleteAccountHandler,name = 'DebugDeleteAccountHandler'),
     webapp2.Route('/debug/users', handler = DebugUserHandler,name = 'DebugUserHandler'),
     webapp2.Route('/user/create', handler = CreateUser,name = 'CreateUser'),
     webapp2.Route('/user/create/', handler = CreateUser,name = 'CreateUser'),

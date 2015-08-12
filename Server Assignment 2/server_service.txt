@@ -1,0 +1,9 @@
+http://extreme-mix-94607.appspot.com
+
+
+helpful debug handler:
+all account creation: /debug/create , using usertype,username,password as request body to set what kind of account to create
+all user print : /debug/users
+setting server mode and setting currentuser = /debug , using servermode to set true or false ,usertype to set currentuser
+delete all account of same type : /debug/flush , using usertype as request body to delete all user of the requested type
+delete specfic user : /debug/delete , using userid to find the user and delete the user if found
