@@ -389,13 +389,12 @@ class GetPlayerHighestLevel(webapp2.RequestHandler): # get a list of level and n
         self.response.headers['Content-Type'] = 'application/json'
 
         jsonobjlist = []
-
-        debuglist = GetAllUser()
         user_list = []
         
-        for i in range(len(debuglist)):
-            if isinstance(debuglist[i],Player):
-                user_list.append(debuglist[i])
+        if SERVER_MODE:
+            user_list = GetAllPlayerServer()
+        else:
+            user_list = GetAllUserLocal()
                 
         totathighestlevelreached_list = [0]# index 0 represent level 1's total player highest level reached and so on
         
@@ -793,7 +792,7 @@ class MainHandler(webapp2.RequestHandler):
 
 app = webapp2.WSGIApplication([
     ('/', MainHandler),
-     webapp2.Route('/special', handler = SpecialDebugHandler,name = 'SpecialDebugHandler'),
+    webapp2.Route('/special', handler = SpecialDebugHandler,name = 'SpecialDebugHandler'),
     webapp2.Route('/debug', handler = DebugHandler,name = 'DebugHandler'),
     webapp2.Route('/debug/create', handler = DebugAccountHandler,name = 'DebugAccountHandler'),
     webapp2.Route('/debug/users', handler = DebugUserHandler,name = 'DebugUserHandler'),

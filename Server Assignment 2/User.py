@@ -8,24 +8,15 @@ class User(ndb.Model):
     user_id = ndb.GenericProperty()
     secret_key = ndb.GenericProperty()
     
-    def __init__(self,ndb_id = None,ndb_parent = None):
-        
-        if ndb_id != None and ndb_parent != None:
-            ndb.Model.__init__(self,id = ndb_id,parent = ndb_parent)
-        else:
-            if ndb_id == None:
-                ndb.Model.__init__(self)
-            else:
-                ndb.Model.__init__(self,id = ndb_id)
-            if ndb_parent == None:
-                ndb.Model.__init__(self)
-            else:
-                ndb.Model.__init__(self,parent = ndb_parent)
+    def __init__(self, *args, **kwds):
+        super(User, self).__init__(*args, **kwds)  
             
+        self.Init()
+        
+    def Init(self):
         self.user_id = "-1"
         self.secret_key = "-1"
         self.classname = self.__class__.__name__ 
-        
     def Populate(self,user_id,secret_key):
         self.user_id = user_id
         self.secret_key = secret_key
